@@ -1,6 +1,6 @@
 Windows Registry Editor Version 5.00
 
 ; X Tweet Saver: force-install with self-hosted updates (Vivaldi, needs admin).
-; Value name "20" is used so it does not overwrite other entries (e.g. Voluptas uses "1").
+; Value name "20" is used so it does not overwrite other entries.
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\VivaldixtensionInstallForcelist]
 "20"="nhddebcfgiijlmnibfjimnmahninjkgg;https://wallapp.tech/ext/x-tweet-saver/updates.xml"
