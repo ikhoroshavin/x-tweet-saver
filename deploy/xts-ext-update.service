@@ -1,6 +1,0 @@
-[Unit]
-Description=X Tweet Saver extension auto-update (git pull + build signed CRX if version grew)
-
-[Service]
-Type=oneshot
-ExecStart=/opt/x-tweet-saver-ext/deploy/update.sh

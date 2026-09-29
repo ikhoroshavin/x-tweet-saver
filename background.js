@@ -2,6 +2,9 @@
 // The panel is hidden by default. Clicking the toolbar icon toggles it
 // by sending a message to the content script in the active tab.
 
+// Self-reload when the unpacked extension's files change on disk (see autoreload.js).
+importScripts("autoreload.js");
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab || !tab.id) return;
   try {

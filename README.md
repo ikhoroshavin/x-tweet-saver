@@ -20,6 +20,8 @@
 3. Включить **Режим разработчика** (переключатель в углу).
 4. **Загрузить распакованное расширение** → выбрать распакованную папку (ту, где лежит `manifest.json`).
 
+Если папка — это клон репозитория, расширение само перезагрузится, когда файлы в ней изменятся (`git pull`): раз в минуту оно сверяет хеш своих файлов (`autoreload.js`). После первой установки один раз нажмите «Обновить» на карточке расширения.
+
 ## Как пользоваться
 
 **Твиты:** открой профиль (для реплаев — вкладку *With replies*) → кликни иконку аддона → **Старт**. Когда счётчик перестанет расти — **Скачать JSON**.
@@ -61,6 +63,8 @@ Not in the Chrome Web Store — install it manually (works in Chrome, Edge, Brav
 2. Open `chrome://extensions` (Edge: `edge://extensions`).
 3. Turn on **Developer mode** (toggle in the corner).
 4. **Load unpacked** → select the unzipped folder (the one containing `manifest.json`).
+
+If the folder is a git clone, the extension reloads itself when its files change (`git pull`): once a minute it compares a hash of its own files (`autoreload.js`). Press "Reload" on its card once after the first install.
 
 ## How to use
 
