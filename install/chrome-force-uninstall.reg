@@ -1,6 +1,6 @@
 Windows Registry Editor Version 5.00
 
-; X Tweet Saver: force-install with self-hosted updates (Chrome, needs admin).
+; X Tweet Saver: remove ONLY this extensions slot (Chrome, needs admin).
 ; Slot "3" is reserved for X Tweet Saver ("1" = Inbox Clipper, "2" = Voluptas). Never reuse another slot: same name overwrites.
 [HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist]
-"3"="nhddebcfgiijlmnibfjimnmahninjkgg;https://wallapp.tech/ext/x-tweet-saver/updates.xml"
+"3"=-
