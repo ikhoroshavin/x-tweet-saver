@@ -278,7 +278,7 @@
     const payload = {
       meta: {
         source: "x-tweet-saver",
-        version: "1.1.0",
+        version: "1.2.0",
         profile: handle,
         url: location.href,
         exported_at: new Date().toISOString(),
@@ -291,6 +291,253 @@
       `${handle}_tweets_${stamp}.json`,
       JSON.stringify(payload, null, 2),
       "application/json;charset=utf-8"
+    );
+  }
+
+  // ---------- thread capture ----------
+  // On a /status/<id> page X loads the whole conversation via the TweetDetail
+  // GraphQL op (already intercepted). Every tweet in a conversation shares the
+  // same conversation_id, so we can slice the store down to just this thread and
+  // rebuild the reply tree from in_reply_to_status_id.
+
+  function focusedTweetId() {
+    const m = location.pathname.match(/\/status\/(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  function currentConversationId() {
+    const fid = focusedTweetId();
+    if (!fid) return null;
+    const t = store.get(fid);
+    return (t && t.conversation_id) || fid;
+  }
+
+  function threadTweets() {
+    const convId = currentConversationId();
+    if (!convId) return [];
+    const out = [];
+    store.forEach((t) => {
+      if (t.conversation_id === convId || t.tweet_id === convId) out.push(t);
+    });
+    return out;
+  }
+
+  // Rebuild the nested reply tree. Roots are tweets whose parent isn't part of
+  // the captured set (the conversation root and any loaded ancestors).
+  function buildThreadTree(tweets, focusedId) {
+    const byId = new Map();
+    tweets.forEach((t) => byId.set(t.tweet_id, Object.assign({}, t, { replies: [] })));
+
+    const roots = [];
+    byId.forEach((node) => {
+      const parentId = node.in_reply_to_status_id;
+      if (parentId && byId.has(parentId)) {
+        byId.get(parentId).replies.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+
+    const ts = (t) => Date.parse((t && t.created_at) || "") || 0;
+    const sortRec = (n) => {
+      n.replies.sort((a, b) => ts(a) - ts(b));
+      n.replies.forEach(sortRec);
+    };
+    roots.sort((a, b) => ts(a) - ts(b));
+    roots.forEach(sortRec);
+
+    return { roots, focused_tweet_id: focusedId };
+  }
+
+  // Buttons X uses to reveal collapsed reply branches ("Show more replies",
+  // "Show probable spam", etc.). Curated so we never hit action buttons like
+  // Reply/Like. Matched case-insensitively against short button labels.
+  // Only unambiguous reply-branch labels. Generic ones like "show more" /
+  // "discover more" / "показать" are intentionally excluded — they also appear
+  // on sidebar modules and navigate away from the thread.
+  const EXPAND_PHRASES = [
+    "show more replies", "more replies", "show replies",
+    "show additional replies", "additional replies",
+    "probable spam", "show probable spam", "offensive replies",
+    "больше ответов", "ещё ответы", "еще ответы",
+    "показать больше ответов", "показать ответы",
+    "дополнительные ответы",
+    "возможный спам", "вероятный спам", "оскорбительные ответы"
+  ];
+
+  function clickExpanders() {
+    let clicked = 0;
+    // Stay inside the conversation column; never the right sidebar.
+    const main = document.querySelector("main") || document.body;
+    // Buttons only — no <a> links, since clicking a link navigates away.
+    const nodes = main.querySelectorAll('[role="button"], button');
+    nodes.forEach((el) => {
+      if (el.dataset.xtsExpanded) return;
+      // Skip "Who to follow" / "Discover more" sidebar and any link-wrapped control.
+      if (el.closest('[data-testid="sidebarColumn"]')) return;
+      if (el.closest("a")) return;
+      const txt = (el.textContent || "").trim().toLowerCase();
+      if (!txt || txt.length > 40) return;
+      const tid = el.getAttribute("data-testid") || "";
+      // Never click compose/action/follow controls.
+      if (/reply|tweetButton|like|retweet|bookmark|unretweet|follow/i.test(tid)) return;
+      if (EXPAND_PHRASES.some((p) => txt.includes(p))) {
+        el.dataset.xtsExpanded = "1";
+        try { el.click(); clicked++; } catch (e) {}
+      }
+    });
+    return clicked;
+  }
+
+  // Autoscroll tuned for a thread page: scrolls from top to bottom while
+  // repeatedly expanding collapsed branches, until nothing new loads.
+  async function collectThread(opts) {
+    if (!focusedTweetId()) {
+      setStatus("Открой отдельный твит (страницу треда).");
+      return;
+    }
+    running = true;
+    stopRequested = false;
+    setStatus("Сбор треда...");
+
+    // Start at the top so ancestors above the focused tweet get captured too.
+    window.scrollTo(0, 0);
+    await sleep(opts.delay);
+
+    let idle = 0;
+    let lastCount = threadTweets().length;
+    let lastHeight = 0;
+    let sameHeight = 0;
+
+    while (!stopRequested) {
+      clickExpanders();
+      window.scrollBy(0, window.innerHeight * 0.9);
+      await sleep(opts.delay);
+
+      const h = pageHeight();
+      if (h === lastHeight) sameHeight++;
+      else { sameHeight = 0; lastHeight = h; }
+
+      const c = threadTweets().length;
+      if (c === lastCount) idle++;
+      else { idle = 0; lastCount = c; }
+
+      setStatus(`Тред: ${c} · холостых: ${idle}/${opts.maxIdle}`);
+
+      if (idle >= opts.maxIdle && sameHeight >= 3) {
+        window.scrollTo(0, pageHeight());
+        await sleep(opts.delay * 1.5);
+        const extra = clickExpanders();
+        await sleep(opts.delay);
+        if (threadTweets().length === lastCount && extra === 0) break;
+        idle = 0;
+        lastCount = threadTweets().length;
+      }
+    }
+
+    running = false;
+    setStatus(
+      stopRequested
+        ? `Тред остановлен. Собрано: ${threadTweets().length}`
+        : `Тред собран: ${threadTweets().length}`
+    );
+    updateCount();
+  }
+
+  function exportThreadJSON() {
+    if (!focusedTweetId()) {
+      setStatus("Открой отдельный твит (страницу треда).");
+      return;
+    }
+    const convId = currentConversationId();
+    const fid = focusedTweetId();
+    const tweets = threadTweets();
+    if (!tweets.length) {
+      setStatus("Тред пуст — сначала «Собрать тред».");
+      return;
+    }
+
+    const tree = buildThreadTree(tweets, fid);
+    const rootId = tree.roots.length ? tree.roots[0].tweet_id : convId || fid;
+    const rootTweet = store.get(rootId);
+    const handle = (rootTweet && rootTweet.username) || currentProfileHandle();
+
+    const flat = tweets.slice().sort((a, b) => {
+      return (Date.parse(a.created_at || "") || 0) -
+             (Date.parse(b.created_at || "") || 0);
+    });
+
+    const payload = {
+      meta: {
+        source: "x-tweet-saver",
+        version: "1.2.0",
+        kind: "thread",
+        conversation_id: convId,
+        focused_tweet_id: fid,
+        root_tweet_id: rootId,
+        author: handle,
+        url: location.href,
+        exported_at: new Date().toISOString(),
+        tweet_count: tweets.length
+      },
+      thread: tree.roots, // nested reply branches
+      tweets: flat        // flat, chronological — for convenience
+    };
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    download(
+      `thread_${handle}_${rootId}_${stamp}.json`,
+      JSON.stringify(payload, null, 2),
+      "application/json;charset=utf-8"
+    );
+  }
+
+  // Human-readable indented rendering — makes the branch structure obvious.
+  function renderThreadNode(node, depth, lines) {
+    const pad = "  ".repeat(depth);
+    const who = node.username ? "@" + node.username : "(unknown)";
+    const stats =
+      `♥${node.favorite_count ?? 0} ↺${node.retweet_count ?? 0} ` +
+      `💬${node.reply_count ?? 0} 👁${node.view_count ?? 0}`;
+    const body = (node.text || "").replace(/\n+/g, " ");
+    const link = `https://x.com/${node.username || "i"}/status/${node.tweet_id}`;
+    lines.push(`${pad}${depth ? "↳ " : "● "}${who}  ·  ${node.created_at || ""}`);
+    lines.push(`${pad}   ${body}`);
+    lines.push(`${pad}   ${stats}  ${link}`);
+    lines.push("");
+    node.replies.forEach((c) => renderThreadNode(c, depth + 1, lines));
+  }
+
+  function exportThreadText() {
+    if (!focusedTweetId()) {
+      setStatus("Открой отдельный твит (страницу треда).");
+      return;
+    }
+    const fid = focusedTweetId();
+    const tweets = threadTweets();
+    if (!tweets.length) {
+      setStatus("Тред пуст — сначала «Собрать тред».");
+      return;
+    }
+    const tree = buildThreadTree(tweets, fid);
+    const rootId = tree.roots.length ? tree.roots[0].tweet_id : fid;
+    const rootTweet = store.get(rootId);
+    const handle = (rootTweet && rootTweet.username) || currentProfileHandle();
+
+    const lines = [
+      `Thread by @${handle} — ${tweets.length} tweets`,
+      location.href,
+      `exported: ${new Date().toISOString()}`,
+      "=".repeat(60),
+      ""
+    ];
+    tree.roots.forEach((r) => renderThreadNode(r, 0, lines));
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    download(
+      `thread_${handle}_${rootId}_${stamp}.txt`,
+      lines.join("\n"),
+      "text/plain;charset=utf-8"
     );
   }
 
@@ -402,6 +649,11 @@
       #xts-btn-stop{background:#475569}
       #xts-btn-export{background:#10b981}
       #xts-btn-clear{background:#334155}
+      #xts-btn-thread{background:#6366f1}
+      #xts-btn-thread-json{background:#0ea5e9}
+      #xts-btn-thread-txt{background:#8b5cf6}
+      #xts-panel .sep{margin-top:12px;padding-top:8px;border-top:1px solid #1e293b;
+        font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.1em}
       #xts-panel .count{font-size:24px;font-weight:700;color:#f8fafc}
       #xts-panel .lbl{font-size:9px;color:#64748b;text-transform:uppercase;
         letter-spacing:.1em}
@@ -437,11 +689,20 @@
       <div class="row">
         <button class="act" id="xts-btn-export">Скачать JSON</button>
       </div>
+      <div class="sep">Тред (страница твита)</div>
+      <div class="row">
+        <button class="act" id="xts-btn-thread">Собрать тред</button>
+      </div>
+      <div class="row">
+        <button class="act" id="xts-btn-thread-json">Тред → JSON</button>
+        <button class="act" id="xts-btn-thread-txt">Тред → TXT</button>
+      </div>
       <div class="row">
         <button class="act" id="xts-btn-clear">Очистить</button>
       </div>
-      <div class="status" id="xts-status">Открой профиль и жми «Старт».
-        Видео качаются кнопкой ⬇ прямо на ролике.</div>
+      <div class="status" id="xts-status">Профиль: «Старт» → «Скачать JSON».
+        Отдельный твит: «Собрать тред» → «Тред → JSON/TXT».
+        Видео — кнопкой ⬇ на ролике.</div>
     `;
     document.body.appendChild(panel);
 
@@ -458,6 +719,11 @@
       if (store.size === 0) { setStatus("Нечего экспортировать."); return; }
       exportJSON();
     };
+    panel.querySelector("#xts-btn-thread").onclick = () => {
+      if (!running) collectThread({ delay: 1200, maxIdle: 8 });
+    };
+    panel.querySelector("#xts-btn-thread-json").onclick = () => exportThreadJSON();
+    panel.querySelector("#xts-btn-thread-txt").onclick = () => exportThreadText();
     panel.querySelector("#xts-btn-clear").onclick = () => {
       store.clear();
       updateCount();

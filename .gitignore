@@ -17,3 +17,6 @@ desktop.ini
 # Node (only if you later add tooling)
 node_modules/
 npm-debug.log*
+
+# Сборка релиза и ключи подписи — только на сервере
+dist/

@@ -7,6 +7,7 @@
 ## Что делает
 
 - Сохраняет твиты и реплаи в JSON со всей статистикой (лайки, репосты, ответы, цитаты, закладки, просмотры), датами, полным текстом и медиа. Данные берутся из внутреннего API самого X, а не парсингом HTML.
+- **Скачивает тред целиком** — со всеми реплаями и ветками обсуждения. Аддон сам докручивает страницу и раскрывает скрытые ответы («Показать больше ответов», «вероятный спам» и т.п.), затем сохраняет тред как вложенное дерево (`JSON`) и как читаемый отступами текст (`TXT`).
 - Кнопка ⬇ на каждом видео — качает mp4 в максимальном качестве.
 - Ничего никуда не отправляется: ни серверов, ни трекинга, ни аккаунта.
 
@@ -23,11 +24,14 @@
 
 **Твиты:** открой профиль (для реплаев — вкладку *With replies*) → кликни иконку аддона → **Старт**. Когда счётчик перестанет расти — **Скачать JSON**.
 
+**Тред:** открой отдельный твит (страница вида `x.com/user/status/…`) → иконка аддона → **Собрать тред**. Аддон прокрутит тред и раскроет скрытые ветки; когда счётчик остановится — **Тред → JSON** (вложенное дерево ответов) или **Тред → TXT** (читаемая версия с отступами по веткам). В JSON есть и дерево (`thread`), и плоский хронологический список (`tweets`).
+
 **Видео:** наведись на ролик и нажми кнопку ⬇ в углу.
 
 ## Ограничения
 
 - X отдаёт примерно последние ~3200 твитов на профиль (это лимит X, не аддона).
+- Сбор треда идёт по данным, которые X реально подгружает при прокрутке: очень длинные/глубоко вложенные ветки и «скрытые» ответы X может не отдавать полностью. Дерево строится по `in_reply_to_status_id`; если ответ пришёл без родителя в наборе — он окажется корнем верхнего уровня.
 - Кнопка на видео появляется, когда данные ролика подгрузились — если её нет, проскролль видео из виду и обратно.
 - Если X переименует свои API-операции и сбор перестанет работать — обнови список `RELEVANT` в `interceptor.js`.
 
@@ -45,6 +49,7 @@
 ## What it does
 
 - Saves tweets and replies to JSON with full stats (likes, retweets, replies, quotes, bookmarks, views), timestamps, full text and media. Data comes from X's own internal API, not HTML scraping.
+- **Downloads a whole thread** — every reply and discussion branch. The add-on autoscrolls and expands hidden replies ("Show more replies", "probable spam", etc.), then saves the thread as a nested tree (`JSON`) and as an indented human-readable transcript (`TXT`).
 - A ⬇ button on every video grabs the highest-quality MP4.
 - Nothing is uploaded anywhere: no servers, no tracking, no account.
 
@@ -60,6 +65,8 @@ Not in the Chrome Web Store — install it manually (works in Chrome, Edge, Brav
 ## How to use
 
 **Tweets:** open a profile (for replies, the *With replies* tab) → click the extension icon → **Start**. When the counter stops growing, click **Download JSON**.
+
+**Thread:** open a single tweet (a `x.com/user/status/…` page) → extension icon → **Собрать тред** (Collect thread). It scrolls the thread and expands hidden branches; when the counter settles, use **Тред → JSON** (nested reply tree) or **Тред → TXT** (indented, branch-aware transcript). The JSON contains both the tree (`thread`) and a flat chronological list (`tweets`).
 
 **Video:** hover a clip and click the ⬇ button in its corner.
 
