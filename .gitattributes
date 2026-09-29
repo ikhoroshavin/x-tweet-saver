@@ -4,3 +4,4 @@
 *.timer text eol=lf
 *.png binary
 *.crx binary
+*.reg text eol=crlf
